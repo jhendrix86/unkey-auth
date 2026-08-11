@@ -13,11 +13,40 @@ class VerifyKeyResult(BaseModel):
     code: str
     key_id: Optional[str] = None
     ratelimits: List[Dict[str, Any]] = Field(default_factory=list)
+    identity: Optional[Dict[str, Any]] = None
+    meta: Dict[str, Any] = Field(default_factory=dict)
     raw: Dict[str, Any] = Field(default_factory=dict)
 
     @property
     def rate_limited(self) -> bool:
         return self.code == "RATE_LIMITED"
+
+    @property
+    def tenant_id(self) -> Optional[str]:
+        """
+        The tenant this key belongs to, if the caller has configured one.
+
+        Checked in order:
+        1. key-level meta["tenant_id"] - an explicit override, for keys
+           that need a tenant different from (or in addition to) whatever
+           their Identity's externalId represents
+        2. identity.externalId - Unkey's own recommended field for "which
+           entity does this key belong to" (see
+           https://unkey.com/docs/api-reference/keys/verify-api-key.md);
+           this project's convention is to set a key's Identity externalId
+           to the owning tenant's UUID when tenant-scoped keys are created
+
+        Returns None if neither is present - callers should treat that as
+        "this key isn't tenant-scoped", not an error.
+        """
+        explicit = self.meta.get("tenant_id")
+        if explicit:
+            return explicit
+
+        if self.identity:
+            return self.identity.get("externalId")
+
+        return None
 
 
 class UnkeyError(Exception):
@@ -66,5 +95,7 @@ class UnkeyClient:
             code=data.get("code", "UNKNOWN"),
             key_id=data.get("keyId"),
             ratelimits=data.get("ratelimits", []) or [],
+            identity=data.get("identity"),
+            meta=data.get("meta", {}) or {},
             raw=data,
         )

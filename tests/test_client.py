@@ -120,3 +120,78 @@ class TestVerifyKey:
 
         with pytest.raises(UnkeyError):
             await client.verify_key("some_key")
+
+
+class TestTenantId:
+    """tenant_id extraction - see VerifyKeyResult.tenant_id's docstring for the priority order."""
+
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_tenant_id_from_identity_external_id(self):
+        respx.post("https://api.unkey.com/v2/keys.verifyKey").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "meta": {},
+                    "data": {
+                        "valid": True, "code": "VALID", "keyId": "key_123",
+                        "identity": {"id": "id_1", "externalId": "tenant-abc", "meta": {}},
+                    },
+                },
+            )
+        )
+        result = await make_client().verify_key("unkey_live_abc")
+
+        assert result.tenant_id == "tenant-abc"
+
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_explicit_key_meta_tenant_id_overrides_identity_external_id(self):
+        respx.post("https://api.unkey.com/v2/keys.verifyKey").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "meta": {},
+                    "data": {
+                        "valid": True, "code": "VALID", "keyId": "key_123",
+                        "meta": {"tenant_id": "tenant-from-key-meta"},
+                        "identity": {"id": "id_1", "externalId": "tenant-from-identity", "meta": {}},
+                    },
+                },
+            )
+        )
+        result = await make_client().verify_key("unkey_live_abc")
+
+        assert result.tenant_id == "tenant-from-key-meta"
+
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_no_identity_or_meta_gives_no_tenant_id(self):
+        respx.post("https://api.unkey.com/v2/keys.verifyKey").mock(
+            return_value=httpx.Response(
+                200,
+                json={"meta": {}, "data": {"valid": True, "code": "VALID", "keyId": "key_123"}},
+            )
+        )
+        result = await make_client().verify_key("unkey_live_abc")
+
+        assert result.tenant_id is None
+
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_identity_present_but_no_external_id_gives_no_tenant_id(self):
+        respx.post("https://api.unkey.com/v2/keys.verifyKey").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "meta": {},
+                    "data": {
+                        "valid": True, "code": "VALID", "keyId": "key_123",
+                        "identity": {"id": "id_1", "meta": {}},
+                    },
+                },
+            )
+        )
+        result = await make_client().verify_key("unkey_live_abc")
+
+        assert result.tenant_id is None
