@@ -32,6 +32,7 @@ setup(
         "dev": [
             "pytest>=7.4.0",
             "pytest-asyncio>=0.21.0",
+            "respx>=0.20.2",
         ],
     },
     include_package_data=True,
